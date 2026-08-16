@@ -14,15 +14,22 @@ final class Installer: ObservableObject {
     private let installCommand =
         #"/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)""#
 
+    private let formulae = [
+        "ffmpeg", "imagemagick", "librsvg", "node", "whisper-cpp",
+        "uv", "manim", "wget",
+    ]
+    private let casks = ["font-inter"]
+
     func start() {
         guard state != .running else { return }
         state = .running
         log = ""
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let ok = self.runInstallScript()
+            var ok = self.runInstallScript()
             if ok {
                 self.configureZshProfile()
+                ok = self.installPackages()
             }
             DispatchQueue.main.async {
                 self.state = ok ? .success : .failure
@@ -37,19 +44,48 @@ final class Installer: ObservableObject {
     }
 
     private func runInstallScript() -> Bool {
+        runCommand(executable: "/bin/bash", arguments: ["-c", installCommand])
+    }
+
+    private func installPackages() -> Bool {
+        guard let brew = brewPath() else {
+            append("\nError: brew was not found. The packages were not installed.\n")
+            return false
+        }
+
+        append("\nInstalling packages: \(formulae.joined(separator: " "))\n")
+        guard runCommand(executable: brew, arguments: ["install"] + formulae) else {
+            append("\nError: the package installation failed.\n")
+            return false
+        }
+
+        append("\nInstalling casks: \(casks.joined(separator: " "))\n")
+        guard runCommand(executable: brew, arguments: ["install", "--cask"] + casks) else {
+            append("\nError: the cask installation failed.\n")
+            return false
+        }
+        return true
+    }
+
+    private func brewPath() -> String? {
+        ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]
+            .first { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    private func runCommand(executable: String, arguments: [String]) -> Bool {
         guard let askpass = Bundle.main.path(forResource: "askpass", ofType: "sh") else {
             append("Internal error: askpass helper is missing from the app bundle.\n")
             return false
         }
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = ["-c", installCommand]
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
 
         var env = ProcessInfo.processInfo.environment
         env["NONINTERACTIVE"] = "1"
         env["SUDO_ASKPASS"] = askpass
-        env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
         process.environment = env
 
         let pipe = Pipe()
@@ -65,7 +101,7 @@ final class Installer: ObservableObject {
         do {
             try process.run()
         } catch {
-            append("Failed to start the installer: \(error.localizedDescription)\n")
+            append("Failed to start \(executable): \(error.localizedDescription)\n")
             return false
         }
         process.waitUntilExit()
@@ -74,9 +110,7 @@ final class Installer: ObservableObject {
     }
 
     private func configureZshProfile() {
-        let brew = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]
-            .first { FileManager.default.fileExists(atPath: $0) }
-        guard let brew else {
+        guard let brew = brewPath() else {
             append("\nWarning: brew was not found. The shell profile was not changed.\n")
             return
         }
@@ -118,7 +152,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Homebrew Installer")
                         .font(.title2.bold())
-                    Text("Installs the Homebrew package manager on this Mac.")
+                    Text("Installs the Homebrew package manager and a set of packages on this Mac.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -135,7 +169,7 @@ struct ContentView: View {
                         .font(.callout)
                 }
             case .success:
-                Label("Homebrew is installed and your shell profile is configured.", systemImage: "checkmark.circle.fill")
+                Label("Homebrew and the packages are installed, and your shell profile is configured.", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
                     .font(.callout.bold())
             case .failure:
