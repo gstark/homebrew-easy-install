@@ -32,8 +32,13 @@ flowchart TD
 - Download the newest `Homebrew-Installer.zip` from the
   [Releases page](https://github.com/gstark/homebrew-easy-install/releases).
 - Unzip the file.
-- Double-click the app. If macOS blocks the app, the build is not
-  notarized; right-click the app and select Open instead.
+- Double-click the app.
+- If macOS shows a "Not Opened" dialog, the build is not notarized. To
+  open it anyway:
+  1. Click Done in the dialog.
+  2. Open System Settings, then Privacy & Security.
+  3. Scroll to the Security section and click "Open Anyway".
+  4. Confirm in the next dialog.
 
 ## Requirements
 
@@ -57,7 +62,8 @@ CI signs and notarizes release builds with a Developer ID certificate when
 the signing secrets are configured. See `SIGNING.md` for the setup. A local
 `./build.sh` without `CODESIGN_IDENTITY` produces an ad-hoc signed build;
 Gatekeeper blocks such a build if it comes from the internet, and the
-recipient must right-click the app and select Open.
+recipient must use the "Open Anyway" steps in the Download section.
+macOS 15 and newer do not offer the old right-click Open bypass.
 
 ## Files
 
