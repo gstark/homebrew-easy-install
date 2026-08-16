@@ -1,0 +1,38 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build app
+        run: ./build.sh
+
+      - name: Zip app
+        run: |
+          cd build
+          ditto -c -k --sequesterRsrc --keepParent "Homebrew Installer.app" "Homebrew-Installer.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Homebrew-Installer
+          path: build/Homebrew-Installer.zip
+
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "Homebrew Installer ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            build/Homebrew-Installer.zip
