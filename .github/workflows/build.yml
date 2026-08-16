@@ -13,16 +13,59 @@ permissions:
 jobs:
   build:
     runs-on: macos-15
+    env:
+      HAS_SIGNING: ${{ secrets.MACOS_CERT_P12 != '' }}
     steps:
       - uses: actions/checkout@v4
 
+      - name: Import signing certificate
+        if: env.HAS_SIGNING == 'true'
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          rm "$RUNNER_TEMP/cert.p12"
+
       - name: Build app
+        env:
+          CODESIGN_IDENTITY: ${{ env.HAS_SIGNING == 'true' && 'Developer ID Application' || '' }}
         run: ./build.sh
+
+      - name: Notarize and staple
+        if: env.HAS_SIGNING == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        run: |
+          echo "$ASC_API_KEY_P8" > "$RUNNER_TEMP/asc-key.p8"
+          cd build
+          ditto -c -k --sequesterRsrc --keepParent \
+            "Homebrew Installer.app" notarize.zip
+          xcrun notarytool submit notarize.zip \
+            --key "$RUNNER_TEMP/asc-key.p8" \
+            --key-id "$ASC_KEY_ID" \
+            --issuer "$ASC_ISSUER_ID" \
+            --wait
+          xcrun stapler staple "Homebrew Installer.app"
+          rm notarize.zip
 
       - name: Zip app
         run: |
           cd build
-          ditto -c -k --sequesterRsrc --keepParent "Homebrew Installer.app" "Homebrew-Installer.zip"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "Homebrew Installer.app" "Homebrew-Installer.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

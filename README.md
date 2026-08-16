@@ -32,8 +32,8 @@ flowchart TD
 - Download the newest `Homebrew-Installer.zip` from the
   [Releases page](https://github.com/gstark/homebrew-easy-install/releases).
 - Unzip the file.
-- Right-click the app and select Open. This step is necessary because the
-  app is not notarized.
+- Double-click the app. If macOS blocks the app, the build is not
+  notarized; right-click the app and select Open instead.
 
 ## Requirements
 
@@ -53,9 +53,11 @@ The result is `build/Homebrew Installer.app`.
 
 ## Distribution note
 
-The build uses an ad-hoc code signature. Gatekeeper blocks ad-hoc apps that
-come from the internet. The recipient must right-click the app and select
-Open, or you must sign and notarize the app with a Developer ID certificate.
+CI signs and notarizes release builds with a Developer ID certificate when
+the signing secrets are configured. See `SIGNING.md` for the setup. A local
+`./build.sh` without `CODESIGN_IDENTITY` produces an ad-hoc signed build;
+Gatekeeper blocks such a build if it comes from the internet, and the
+recipient must right-click the app and select Open.
 
 ## Files
 
